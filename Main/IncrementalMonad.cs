@@ -41,12 +41,15 @@ public class IncrementalMonad<T>
                     "MONAD0",
                     "Error",
                     $"Unexpected error: {e.Message}",
-                    "ResXToViewModelGenerator",
+                    "IncrementalMonad",
                     DiagnosticSeverity.Error,
                     true),
                 Location.None));
             
-            return new IncrementalMonad<TNext>(_diagnostics.Concat(nextDiagnostics).ToArray());
+            return new IncrementalMonad<TNext>(_diagnostics.Concat(nextDiagnostics).ToArray())
+            {
+                IsAborted = true // An uncaught exception automatically aborts the monad
+            };
         }
         
         void ProcessDiagnostic(Diagnostic diagnostic) => nextDiagnostics.Add(diagnostic);
@@ -56,8 +59,23 @@ public class IncrementalMonad<T>
     {
         foreach (var diagnostic in _diagnostics)
             context.ReportDiagnostic(diagnostic);
-        if (!IsAborted)
-            sinkingLegitValue(_value);
+        try
+        {
+            if (!IsAborted)
+                sinkingLegitValue(_value);
+        }
+        catch (Exception e)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                new DiagnosticDescriptor(
+                    "MONAD1",
+                    "Error",
+                    $"Unexpected error during sinking: {e.Message}",
+                    "IncrementalMonad",
+                    DiagnosticSeverity.Error,
+                    true),
+                Location.None));
+        }
     }
     
     public IncrementalMonad<T> Abort() => new(_value, _diagnostics) { IsAborted = true };
